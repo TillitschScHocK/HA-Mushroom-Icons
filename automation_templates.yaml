@@ -1,17 +1,35 @@
-alias: Mülltonne Benachrichtigung
-description: Benachrichtigt vor der Müllabholung mit dauerhafter Benachrichtigung
+blueprint:
+  name: Mülltonne Benachrichtigung
+  description: Benachrichtigt vor der Müllabholung mit dauerhafter Benachrichtigung
+  domain: automation
+  input:
+    trigger_time:
+      name: Auslösende Uhrzeit
+      description: Uhrzeit für die Benachrichtigung (z.B. '18:30:00')
+      selector:
+        time: {}
+    mobile_app:
+      name: Mobile App
+      description: Wähle die Ziel-Mobile-App für die Benachrichtigung.
+      selector:
+        device:
+          integration: mobile_app
+          multiple: false
+
 trigger:
   - platform: time
-    at: "{{ trigger_time }}"
+    at: !input trigger_time
     id: Uhrzeit
   - platform: event
     event_type: mobile_app_notification_action
     event_data:
       action: RAUSGESTELLT
     id: Rausgestellt
+
 condition:
   - condition: template
     value_template: "{{ states('sensor.1').split(' in ')[1].split(' ')[0] | int == 1 }}"
+
 action:
   - choose:
       - conditions:
@@ -19,7 +37,7 @@ action:
             id: Uhrzeit
             enabled: false
         sequence:
-          - action: notify.mobile_app_tillis_handy
+          - action: notify.{{ input.mobile_app }}
             data:
               message: >
                 {% set muellart = states('sensor.1').split(' in ')[0] %} 
@@ -49,7 +67,7 @@ action:
                 event_type: mobile_app_notification_action
                 event_data:
                   action: RAUSGESTELLT
-          - action: notify.mobile_app_tillis_handy
+          - action: notify.{{ input.mobile_app }}
             data:
               message: "Danke für die Bestätigung :) "
               title: "{{ states('sensor.1').split(' in ')[0] }} wurden rausgestellt!"
@@ -60,10 +78,11 @@ action:
                 priority: high
           - delay:
               seconds: 5
-          - action: notify.mobile_app_tillis_handy
+          - action: notify.{{ input.mobile_app }}
             data:
               message: clear_notification
               data:
                 tag: muell_erinnerung
                 channel: muell_erinnerung
+
 mode: single
