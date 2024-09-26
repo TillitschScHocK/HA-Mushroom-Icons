@@ -1,67 +1,28 @@
-blueprint:
-  name: Flexible Mülltonne Benachrichtigung
-  description: Anpassbare Benachrichtigung für Müllabholung mit Bestätigungsoption
-  domain: automation
-  input:
-    notification_time:
-      name: Benachrichtigungszeit
-      description: Uhrzeit für die Benachrichtigung (Format HH:MM:SS)
-      selector:
-        time:
-    muell_sensor:
-      name: Müllsensor
-      description: Sensor, der die nächste Müllabholung anzeigt
-      selector:
-        entity:
-          domain: sensor
-    notify_service:
-      name: Benachrichtigungsdienst
-      description: Der zu verwendende Benachrichtigungsdienst (z.B. notify.mobile_app_your_device)
-      selector:
-        text:
-    channel_name:
-      name: Benachrichtigungskanal
-      description: Name des Benachrichtigungskanals (z.B. muell_erinnerung)
-      selector:
-        text:
-    tag_name:
-      name: Benachrichtigungs-Tag
-      description: Tag für die Benachrichtigung (z.B. muell_erinnerung)
-      selector:
-        text:
-
-mode: single
-
+alias: Mülltonne Benachrichtigung
+description: Benachrichtigt vor der Müllabholung mit dauerhafter Benachrichtigung
 trigger:
   - platform: time
-    at: !input notification_time
+    at: "{{ trigger_time }}"
     id: Uhrzeit
   - platform: event
     event_type: mobile_app_notification_action
     event_data:
       action: RAUSGESTELLT
     id: Rausgestellt
-
 condition:
   - condition: template
-    value_template: "{{ states(muell_sensor).split(' in ')[1].split(' ')[0] | int == 1 }}"
-
-variables:
-  muell_sensor: !input muell_sensor
-  notify_service: !input notify_service
-  channel_name: !input channel_name
-  tag_name: !input tag_name
-
+    value_template: "{{ states('sensor.1').split(' in ')[1].split(' ')[0] | int == 1 }}"
 action:
   - choose:
       - conditions:
           - condition: trigger
             id: Uhrzeit
+            enabled: false
         sequence:
-          - service: "{{ notify_service }}"
+          - action: notify.mobile_app_tillis_handy
             data:
               message: >
-                {% set muellart = states(muell_sensor).split(' in ')[0] %}
+                {% set muellart = states('sensor.1').split(' in ')[0] %} 
                 {% if muellart == 'Gelbe Säcke' %}
                   Morgen werden die Gelben Säcke abgeholt!
                 {% elif muellart == 'Restmülltonne' %}
@@ -75,11 +36,11 @@ action:
               data:
                 persistent: true
                 sticky: true
-                channel: "{{ channel_name }}"
+                channel: muell_erinnerung
                 importance: high
                 ttl: 0
                 priority: high
-                tag: "{{ tag_name }}"
+                tag: muell_erinnerung
                 actions:
                   - action: RAUSGESTELLT
                     title: Rausgestellt
@@ -88,19 +49,21 @@ action:
                 event_type: mobile_app_notification_action
                 event_data:
                   action: RAUSGESTELLT
-          - service: "{{ notify_service }}"
+          - action: notify.mobile_app_tillis_handy
             data:
               message: "Danke für die Bestätigung :) "
-              title: "{{ states(muell_sensor).split(' in ')[0] }} wurden rausgestellt!"
+              title: "{{ states('sensor.1').split(' in ')[0] }} wurden rausgestellt!"
               data:
-                tag: "{{ tag_name }}"
-                channel: "{{ channel_name }}"
+                tag: muell_erinnerung
+                channel: muell_erinnerung
                 importance: high
                 priority: high
           - delay:
               seconds: 5
-          - service: "{{ notify_service }}"
+          - action: notify.mobile_app_tillis_handy
             data:
               message: clear_notification
               data:
-                tag: "{{ tag_name }}"
+                tag: muell_erinnerung
+                channel: muell_erinnerung
+mode: single
