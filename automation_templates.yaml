@@ -1,0 +1,112 @@
+blueprint:
+  name: Multifunktionale Automatisierungsvorlagen
+  description: Eine Sammlung verschiedener Automatisierungsvorlagen für Home Assistant
+  domain: automation
+  input:
+    motion_sensor:
+      name: Bewegungssensor
+      description: Wählen Sie den Bewegungssensor aus
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: motion
+    light:
+      name: Licht
+      description: Wählen Sie das zu steuernde Licht aus
+      selector:
+        entity:
+          domain: light
+    temperature_sensor:
+      name: Temperatursensor
+      description: Wählen Sie den Temperatursensor aus
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    climate_device:
+      name: Klimagerät
+      description: Wählen Sie das Klimagerät aus
+      selector:
+        entity:
+          domain: climate
+    time_start:
+      name: Startzeit
+      description: Wählen Sie die Startzeit für die Zeitsteuerung
+      selector:
+        time: {}
+    time_end:
+      name: Endzeit
+      description: Wählen Sie die Endzeit für die Zeitsteuerung
+      selector:
+        time: {}
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input motion_sensor
+    to: "on"
+    id: "motion_detected"
+  - platform: numeric_state
+    entity_id: !input temperature_sensor
+    above: 25
+    id: "temp_high"
+  - platform: time
+    at: !input time_start
+    id: "time_start"
+
+condition:
+  - condition: and
+    conditions:
+      - condition: time
+        after: !input time_start
+        before: !input time_end
+      - condition: state
+        entity_id: !input motion_sensor
+        state: "on"
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: "motion_detected"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light
+          - wait_for_trigger:
+              platform: state
+              entity_id: !input motion_sensor
+              to: "off"
+          - delay: "00:05:00"
+          - service: light.turn_off
+            target:
+              entity_id: !input light
+
+      - conditions:
+          - condition: trigger
+            id: "temp_high"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_device
+            data:
+              temperature: 22
+
+      - conditions:
+          - condition: trigger
+            id: "time_start"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light
+          - wait_for_trigger:
+              platform: time
+              at: !input time_end
+          - service: light.turn_off
+            target:
+              entity_id: !input light
+
+  - service: persistent_notification.create
+    data:
+      message: "Eine Automatisierung wurde ausgelöst!"
