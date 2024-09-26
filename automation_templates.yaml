@@ -1,112 +1,106 @@
 blueprint:
-  name: Multifunktionale Automatisierungsvorlagen
-  description: Eine Sammlung verschiedener Automatisierungsvorlagen für Home Assistant
+  name: Flexible Mülltonne Benachrichtigung
+  description: Anpassbare Benachrichtigung für Müllabholung mit Bestätigungsoption
   domain: automation
   input:
-    motion_sensor:
-      name: Bewegungssensor
-      description: Wählen Sie den Bewegungssensor aus
+    notification_time:
+      name: Benachrichtigungszeit
+      description: Uhrzeit für die Benachrichtigung (Format HH:MM:SS)
       selector:
-        entity:
-          domain: binary_sensor
-          device_class: motion
-    light:
-      name: Licht
-      description: Wählen Sie das zu steuernde Licht aus
-      selector:
-        entity:
-          domain: light
-    temperature_sensor:
-      name: Temperatursensor
-      description: Wählen Sie den Temperatursensor aus
+        time:
+    muell_sensor:
+      name: Müllsensor
+      description: Sensor, der die nächste Müllabholung anzeigt
       selector:
         entity:
           domain: sensor
-          device_class: temperature
-    climate_device:
-      name: Klimagerät
-      description: Wählen Sie das Klimagerät aus
+    notify_service:
+      name: Benachrichtigungsdienst
+      description: Der zu verwendende Benachrichtigungsdienst (z.B. notify.mobile_app_your_device)
       selector:
-        entity:
-          domain: climate
-    time_start:
-      name: Startzeit
-      description: Wählen Sie die Startzeit für die Zeitsteuerung
+        text:
+    channel_name:
+      name: Benachrichtigungskanal
+      description: Name des Benachrichtigungskanals (z.B. muell_erinnerung)
       selector:
-        time: {}
-    time_end:
-      name: Endzeit
-      description: Wählen Sie die Endzeit für die Zeitsteuerung
+        text:
+    tag_name:
+      name: Benachrichtigungs-Tag
+      description: Tag für die Benachrichtigung (z.B. muell_erinnerung)
       selector:
-        time: {}
+        text:
 
-mode: restart
+mode: single
 
 trigger:
-  - platform: state
-    entity_id: !input motion_sensor
-    to: "on"
-    id: "motion_detected"
-  - platform: numeric_state
-    entity_id: !input temperature_sensor
-    above: 25
-    id: "temp_high"
   - platform: time
-    at: !input time_start
-    id: "time_start"
+    at: !input notification_time
+    id: Uhrzeit
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: RAUSGESTELLT
+    id: Rausgestellt
 
 condition:
-  - condition: and
-    conditions:
-      - condition: time
-        after: !input time_start
-        before: !input time_end
-      - condition: state
-        entity_id: !input motion_sensor
-        state: "on"
+  - condition: template
+    value_template: "{{ states(muell_sensor).split(' in ')[1].split(' ')[0] | int == 1 }}"
+
+variables:
+  muell_sensor: !input muell_sensor
+  notify_service: !input notify_service
+  channel_name: !input channel_name
+  tag_name: !input tag_name
 
 action:
   - choose:
       - conditions:
           - condition: trigger
-            id: "motion_detected"
+            id: Uhrzeit
         sequence:
-          - service: light.turn_on
-            target:
-              entity_id: !input light
-          - wait_for_trigger:
-              platform: state
-              entity_id: !input motion_sensor
-              to: "off"
-          - delay: "00:05:00"
-          - service: light.turn_off
-            target:
-              entity_id: !input light
-
-      - conditions:
-          - condition: trigger
-            id: "temp_high"
-        sequence:
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_device
+          - service: "{{ notify_service }}"
             data:
-              temperature: 22
-
-      - conditions:
-          - condition: trigger
-            id: "time_start"
-        sequence:
-          - service: light.turn_on
-            target:
-              entity_id: !input light
+              message: >
+                {% set muellart = states(muell_sensor).split(' in ')[0] %}
+                {% if muellart == 'Gelbe Säcke' %}
+                  Morgen werden die Gelben Säcke abgeholt!
+                {% elif muellart == 'Restmülltonne' %}
+                  Morgen wird die Restmülltonne abgeholt!
+                {% elif muellart == 'Papiertonne' %}
+                  Morgen wird die Papiertonne abgeholt!
+                {% else %}
+                  Morgen wird {{ muellart }} abgeholt!
+                {% endif %}
+              title: Müllabholung morgen
+              data:
+                persistent: true
+                sticky: true
+                channel: "{{ channel_name }}"
+                importance: high
+                ttl: 0
+                priority: high
+                tag: "{{ tag_name }}"
+                actions:
+                  - action: RAUSGESTELLT
+                    title: Rausgestellt
           - wait_for_trigger:
-              platform: time
-              at: !input time_end
-          - service: light.turn_off
-            target:
-              entity_id: !input light
-
-  - service: persistent_notification.create
-    data:
-      message: "Eine Automatisierung wurde ausgelöst!"
+              - platform: event
+                event_type: mobile_app_notification_action
+                event_data:
+                  action: RAUSGESTELLT
+          - service: "{{ notify_service }}"
+            data:
+              message: "Danke für die Bestätigung :) "
+              title: "{{ states(muell_sensor).split(' in ')[0] }} wurden rausgestellt!"
+              data:
+                tag: "{{ tag_name }}"
+                channel: "{{ channel_name }}"
+                importance: high
+                priority: high
+          - delay:
+              seconds: 5
+          - service: "{{ notify_service }}"
+            data:
+              message: clear_notification
+              data:
+                tag: "{{ tag_name }}"
