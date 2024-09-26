@@ -1,0 +1,88 @@
+blueprint:
+  name: Mülltonne Benachrichtigung
+  description: Benachrichtigt vor der Müllabholung mit dauerhafter Benachrichtigung
+  domain: automation
+  input:
+    trigger_time:
+      name: Auslösende Uhrzeit
+      description: Uhrzeit für die Benachrichtigung (z.B. '18:30:00')
+      selector:
+        time: {}
+    mobile_app:
+      name: Mobile App
+      description: Wähle die Ziel-Mobile-App für die Benachrichtigung.
+      selector:
+        device:
+          integration: mobile_app
+          multiple: false
+
+trigger:
+  - platform: time
+    at: !input trigger_time
+    id: Uhrzeit
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: RAUSGESTELLT
+    id: Rausgestellt
+
+condition:
+  - condition: template
+    value_template: "{{ states('sensor.1').split(' in ')[1].split(' ')[0] | int == 1 }}"
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: Uhrzeit
+            enabled: false
+        sequence:
+          - action: notify.{{ input.mobile_app }}
+            data:
+              message: >
+                {% set muellart = states('sensor.1').split(' in ')[0] %} 
+                {% if muellart == 'Gelbe Säcke' %}
+                  Morgen werden die Gelben Säcke abgeholt!
+                {% elif muellart == 'Restmülltonne' %}
+                  Morgen wird die Restmülltonne abgeholt!
+                {% elif muellart == 'Papiertonne' %}
+                  Morgen wird die Papiertonne abgeholt!
+                {% else %}
+                  Morgen wird {{ muellart }} abgeholt!
+                {% endif %}
+              title: Müllabholung morgen
+              data:
+                persistent: true
+                sticky: true
+                channel: muell_erinnerung
+                importance: high
+                ttl: 0
+                priority: high
+                tag: muell_erinnerung
+                actions:
+                  - action: RAUSGESTELLT
+                    title: Rausgestellt
+          - wait_for_trigger:
+              - platform: event
+                event_type: mobile_app_notification_action
+                event_data:
+                  action: RAUSGESTELLT
+          - action: notify.{{ input.mobile_app }}
+            data:
+              message: "Danke für die Bestätigung :) "
+              title: "{{ states('sensor.1').split(' in ')[0] }} wurden rausgestellt!"
+              data:
+                tag: muell_erinnerung
+                channel: muell_erinnerung
+                importance: high
+                priority: high
+          - delay:
+              seconds: 5
+          - action: notify.{{ input.mobile_app }}
+            data:
+              message: clear_notification
+              data:
+                tag: muell_erinnerung
+                channel: muell_erinnerung
+
+mode: single
